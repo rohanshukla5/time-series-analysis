@@ -1,0 +1,278 @@
+---
+title: "Preliminary Data Visualizations"
+output:
+  pdf_document: default
+urlcolor: blue
+date: "Last Updated: 2025-03-01"
+---
+
+```{r setup, include=FALSE}
+# settings for compiling into pdf
+knitr::opts_chunk$set(cache=TRUE, autodep=TRUE, cache.comments=FALSE,
+               message=FALSE, warning=FALSE, echo=FALSE, fig.align = "center")
+```
+
+# What is This?
+
+The stocks used in this file were drawn from the [Huge Stock Market Dataset]("https://www.kaggle.com/datasets/borismarjanovic/price-volume-data-for-all-us-stocks-etfs") we'll be using in this project. The purpose of this file is to examine and understand what the data sets we are using look like (i.e. variables available, time periods covered, data distributions).
+
+We will be looking at both volatile (Solana) and nonvolatile (Apple, Microsoft) stocks.
+
+To see the code used to compile this PDF, see the corresponding R Markdown file.
+
+# How to Run This File
+
+For the R Markdown file, it is recommended to be opened using RStudio with the latest version of R. 
+
+This file uses the `tidyverse` package in R, which needs to be installed in the Console using the command `install.packages("tidyverse")` prior to running the following code that loads the package into this session.
+```{r load_tidyverse, echo=TRUE}
+#| warning: false
+#| message: false
+library(tidyverse)
+```
+
+This file also uses the `quantmod` and `broom` package in R for plotting the S&P500 index. Again, this needs to be installed in the Console using the command `install.packages("quantmod")` prior to running the following doe that loads the package into this session.
+```{r load_quantmod, echo = TRUE}
+library(quantmod)
+library(broom)
+```
+
+To load the data, make sure to have the following necessary `txt` files containing the data within the same folder you have this R Markdown file in:
+\begin{itemize}
+  \item aapl.us.txt
+  \item msft.us.txt
+  \item sol.us.txt
+\end{itemize}
+
+To see any documentation about the built-in functions used, you can use the `help()` command in the Console in RStudio.
+
+\newpage
+
+# Notes About the Data
+
+Each dataframe (i.e. each `txt` file) contains information about a different stock with the following 7 variables:
+\begin{itemize}
+  \item \textbf{Date}: The day that row's data corresponds to. It is formatted as year-mm-dd.
+  \item \textbf{Open}: The open price of the stock that day. This is the price at which the stock first trades at when the stock market opens for the day.
+  \item \textbf{High}: The highest price the stock was sold for that day.
+  \item \textbf{Low}: The lowest price that stock was sold for that day.
+  \item \textbf{Close}: The closing price of the stock that day. This is the price that the stock was last recorded to be sold for before the stock market closes for the day.
+  \item \textbf{Volume}: The total number of shares of the particular stock traded that day.
+  \item \textbf{OpenInt}: ???
+\end{itemize}
+
+
+\newpage
+
+## AAPL Stock Data Set
+
+The following data is for Apple (APPL) stocks.
+
+```{r load_apple}
+apple <- read.table("aapl.us.txt", sep = ",", header = TRUE)
+```
+
+The following are the first 5 rows of the `apple` data set:
+```{r apple_head}
+head(apple, 5)
+```
+The following are the last 5 rows of the `apple` data set:
+```{r apple_tail}
+tail(apple, 5)
+```
+
+The following are some summary statistics of the `apple` data set:
+```{r apple_summary}
+summary(apple)
+```
+
+```{r apple_close, fig.width = 5.5, fig.height = 4}
+apple |>
+  ggplot(aes(x = as.Date(Date), y = Close)) +
+  geom_line(col = "blue") +
+  theme_bw() +
+  labs(title = "Closing Prices for AAPL",
+       x = "Time", y = "Closing Price ($)")
+```
+
+```{r apple_volume, fig.width = 5.5, fig.height = 4}
+apple |>
+  ggplot(aes(x = as.Date(Date), y = Volume)) +
+  geom_bar(stat = "identity") +
+  theme_bw() +
+  labs(title = "Volume of AAPL Stocks",
+       x = "Time", y = "Volume")
+```
+
+\newpage
+
+## MSFT Stock Data Set
+
+The following data is for Microsoft (MSFT) stocks.
+
+```{r load_msft}
+msft <- read.table("msft.us.txt", sep = ",", header = TRUE)
+```
+
+The following are the first 5 rows of the `msft` data set:
+```{r msft_head}
+head(msft, 5)
+```
+The following are the last 5 rows of the `msft` data set:
+```{r msft_tail}
+tail(apple, 5)
+```
+
+The following are some summary statistics of the `msft` data set:
+```{r msft_summary}
+summary(msft)
+```
+
+```{r msft_close, fig.width = 5.5, fig.height = 4}
+msft |>
+  ggplot(aes(x = as.Date(Date), y = Close)) +
+  geom_line(col = "blue") +
+  theme_bw() +
+  labs(title = "Closing Prices for MSFT",
+       x = "Time", y = "Closing Price ($)")
+```
+
+```{r msft_volume, fig.width = 5.5, fig.height = 4}
+msft |>
+  ggplot(aes(x = as.Date(Date), y = Volume)) +
+  geom_bar(stat = "identity") +
+  theme_bw() +
+  labs(title = "Volume of MSFT Stocks",
+       x = "Time", y = "Volume")
+```
+
+\newpage
+
+## SOL Stock Data Set
+
+The following data is for Solana (SOL) stocks. Solana is a cryptocurrency and blockchain platform.
+
+```{r load_sol}
+sol <- read.table("sol.us.txt", sep = ",", header = TRUE)
+```
+
+The following are the first 5 rows of the `sol` data set:
+```{r sol_head}
+head(sol, 5)
+```
+The following are the last 5 rows of the `sol` data set:
+```{r sol_tail}
+tail(sol, 5)
+```
+
+The following are some summary statistics of the `sol` data set:
+```{r sol_summary}
+summary(sol)
+```
+
+```{r sol_close, fig.width = 5.5, fig.height = 4}
+sol |>
+  ggplot(aes(x = as.Date(Date), y = Close)) +
+  geom_line(col = "blue") +
+  theme_bw() +
+  labs(title = "Closing Prices for SOL",
+       x = "Time", y = "Closing Price ($)")
+```
+
+```{r sol_volume, fig.width = 5.5, fig.height = 4}
+sol |>
+  ggplot(aes(x = as.Date(Date), y = Volume)) +
+  geom_bar(stat = "identity") +
+  theme_bw() +
+  labs(title = "Volume of SOL Stocks",
+       x = "Time", y = "Volume")
+```
+
+\newpage
+
+## S&P 500 Index
+
+Note that in this section, we will be drawing data from Yahoo Finance instead of the `txt` files from before.
+
+The time range covered here will be from `2008-01-29` to `2017-11-10` since this period is covered in all three of our data sets of interest from before.
+
+```{r sp500, results='hide'}
+# define time period
+date.start <- as.Date("2008-01-29")
+date.end <- as.Date("2017-11-10")
+
+# retrieve data
+## note that ^GSPC corresponds to S&P500
+getSymbols(c("AAPL", "MSFT", "SOL","^GSPC"), src = "yahoo", 
+           from = date.start, to = date.end)
+stocks <- as.xts(data.frame(A = AAPL[, "AAPL.Adjusted"], 
+                           M = MSFT[, "MSFT.Adjusted"], 
+                           S = SOL[, "SOL.Adjusted"], 
+                           SP = GSPC[,"GSPC.Adjusted"]))
+names(stocks) <- c("Apple", "Microsoft", "Solana","S&P 500")
+index(stocks) <- as.Date(index(stocks))
+stocks <- tidy(stocks)
+# reorder the stocks
+stocks <- mutate(stocks, 
+                 series = fct_relevel(series,
+                                      c("S&P 500", "Apple", "Microsoft", "Solana")))
+```
+
+```{r plot_sp500}
+stocks |>
+  ggplot(aes(x = index, y = value, color = series)) +
+  geom_line() +
+  labs(title = "Closing Prices and S&P 500",
+       x = "Time", y = "Price ($)", col = "")
+```
+```{r facetplot_sp500}
+stocks |>
+  ggplot(aes(x = index, y = value, color = series)) +
+  geom_line() +
+  facet_grid(series~., scale = "free") +
+  theme_bw() +
+  labs(title = "Closing Prices and S&P 500",
+       x = "Time", y = "Price ($)", col = "")
+```
+\newpage
+
+The following plots are observing only `2016-11-10` to `2017-11-10` (i.e. the last year of the previous plot).
+
+```{r small_sp500, results='hide'}
+# define time period
+smalldate.start <- as.Date("2016-11-10")
+smalldate.end <- as.Date("2017-11-10")
+
+# retrieve data
+## note that ^GSPC corresponds to S&P500
+getSymbols(c("AAPL", "MSFT", "SOL","^GSPC"), src = "yahoo", 
+           from = smalldate.start, to = smalldate.end)
+smallstocks <- as.xts(data.frame(A = AAPL[, "AAPL.Adjusted"], 
+                           M = MSFT[, "MSFT.Adjusted"], 
+                           S = SOL[, "SOL.Adjusted"], 
+                           SP = GSPC[,"GSPC.Adjusted"]))
+names(smallstocks) <- c("Apple", "Microsoft", "Solana","S&P 500")
+index(smallstocks) <- as.Date(index(smallstocks))
+smallstocks <- tidy(smallstocks)
+# reorder the stocks
+smallstocks <- mutate(smallstocks, 
+                      series = fct_relevel(series,
+                                      c("S&P 500", "Apple", "Microsoft", "Solana")))
+```
+
+```{r small_plot_sp500}
+smallstocks |>
+  ggplot(aes(x = index, y = value, color = series)) +
+  geom_line() +
+  labs(title = "Closing Prices and S&P 500 for a Year",
+       x = "Time", y = "Price ($)", col = "")
+```
+```{r small_facetplot_sp500}
+smallstocks |>
+  ggplot(aes(x = index, y = value, color = series)) +
+  geom_line() +
+  facet_grid(series~., scales = "free") +
+  theme_bw() +
+  labs(title = "Closing Prices and S&P 500 for a Year",
+       x = "Time", y = "Price ($)", col = "")
+```
