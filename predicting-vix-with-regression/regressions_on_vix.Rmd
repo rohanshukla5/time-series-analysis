@@ -12,23 +12,25 @@ knitr::opts_chunk$set(cache=TRUE, autodep=TRUE, cache.comments=FALSE,
                message=FALSE, warning=FALSE, echo=FALSE, fig.align = "center")
 ```
 
-# How to Run This File
+# How to Run The R Markdown (RMD) File
 
 For the R Markdown file, it is recommended to be opened using RStudio with the latest version of R. 
 
-This file uses the `tidyverse` package in R, which needs to be installed in the Console using the command `install.packages("tidyverse")` prior to running the following code that loads the package into this session.
-```{r load_tidyverse, warning = FALSE, echo=TRUE}
+Each of the following items listed is an R package that needs to be installed by running the command `install.packages("package-name")` in the Console before running the file. The commands `library(package-name)` in the RMD file then loads the package into the session. 
+\begin{itemize}
+\item \textbf{tidyverse}: for nice data transformation functions and for making clean plots
+\item \textbf{tidyquant}: for retrieving data about stock prices from Yahoo Finance easily
+\item \textbf{zoo}: for dealing with time series data (ex. rolling averages)
+\item \textbf{np}: for fitting kernel regressions
+\item \textbf{mgcv}: for fitting generalized additive models
+\end{itemize}
+
+```{r load_tidyverse, warning = FALSE}
 library(tidyverse)
-```
-
-This file also uses the `tidyquant` package in R for retrieving data about stock prices from Yahoo Finance. Again, this needs to be installed in the Console using the command `install.packages("tidyquant")` prior to running the following doe that loads the package into this session.
-```{r load_tidyquant, warning = FALSE, echo = TRUE}
 library(tidyquant)
-```
-
-This also uses the `zoo` package in R for dealing with time series. Again, use `install.packages("zoo")` prior to running the following code.
-```{r load_zoo, warning = FALSE, echo = TRUE}
 library(zoo)
+library(np)
+library(mgcv)
 ```
 
 To see any documentation about the built-in functions used, you can use the `help()` command in the Console in RStudio.
@@ -175,3 +177,45 @@ new_spy.vix |>
 
 If the predicted value matches the actual observed, then the data would appear centered around the black line in the plot. However, when we fit a linear regression of the predicted values on the observed (i.e. find the line-of-best-fit) and plot it as the blue line, we do see a difference between the two plotted lines. Something to keep in mind is that we do see some outliers on the right where we see a drastically different VIX value from the rest of the data which heavily influences the fitting of the blue line. Regardless, we can see from observing the data points that they don't appear to be centered around the black line. It appears that the linear model tended to over-estimate the VIX index since most points lied above the black line.
 
+```{r kernel}
+# turn off annoying np messages
+options(np.messages = FALSE)
+# now fit a kernel regression instead of a linear regression
+kernel_mdl <- npreg(vix_index ~ rolling_vol_annual, data = spy.vix)
+# and now use the kernel regression model for predictions
+kernel_mdl.predictions <- predict(kernel_mdl, newdata = new_spy.vix)
+
+# add these new predictions to the previous plot
+new_spy.vix <- data.frame(new_spy.vix,
+                          kernel.pred_vix = c(rep(NA, 29), kernel_mdl.predictions))
+new_spy.vix |>
+  ggplot(aes(x = vix_index)) +
+  geom_point(aes(y = lm.pred_vix), alpha = 0.3, color = "blue") +
+  geom_point(aes(y = kernel.pred_vix), alpha = 0.3, color = "red") +
+  geom_abline(intercept = 0, slope = 1) +
+  theme_bw() +
+  labs(title = "2024 VIX vs Predicted VIX",
+       subtitle = "Blue = Linear Regression, Red = Kernel Regression",
+       x = "Observed VIX", y = "Predicted VIX")
+```
+
+```{r gam}
+# now fit a generalized additive model (GAM)
+# - s(...) means to smooth over this variable
+gam_mdl <- gam(vix_index ~ s(rolling_vol_annual), data = spy.vix)
+# use the gam for predictions
+gam_mdl.predictions <- predict(gam_mdl, newdata = new_spy.vix)
+# add these to the plot as well
+new_spy.vix <- data.frame(new_spy.vix,
+                          gam.pred_vix = gam_mdl.predictions)
+new_spy.vix |>
+  ggplot(aes(x = vix_index)) +
+  geom_point(aes(y = lm.pred_vix), alpha = 0.3, color = "blue") +
+  geom_point(aes(y = kernel.pred_vix), alpha = 0.3, color = "red") +
+  geom_point(aes(y = gam.pred_vix), alpha = 0.3, color = "green") +
+  geom_abline(intercept = 0, slope = 1) +
+  theme_bw() +
+  labs(title = "2024 VIX vs Predicted VIX",
+       subtitle = "Blue = Linear Regression, Red = Kernel Regression, Green = GAM",
+       x = "Observed VIX", y = "Predicted VIX")
+```
