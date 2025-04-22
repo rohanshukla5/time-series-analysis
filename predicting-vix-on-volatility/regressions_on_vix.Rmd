@@ -1,0 +1,221 @@
+---
+title: "Regressions on VIX"
+output:
+  pdf_document: default
+urlcolor: blue
+date: "Last Updated: 2025-04-17"
+---
+
+```{r setup, include=FALSE}
+# settings for compiling into pdf
+knitr::opts_chunk$set(cache=TRUE, autodep=TRUE, cache.comments=FALSE,
+               message=FALSE, warning=FALSE, echo=FALSE, fig.align = "center")
+```
+
+# How to Run The R Markdown (RMD) File
+
+For the R Markdown file, it is recommended to be opened using RStudio with the latest version of R. 
+
+Each of the following items listed is an R package that needs to be installed by running the command `install.packages("package-name")` in the Console before running the file. The commands `library(package-name)` in the RMD file then loads the package into the session. 
+\begin{itemize}
+\item \textbf{tidyverse}: for nice data transformation functions and for making clean plots
+\item \textbf{tidyquant}: for retrieving data about stock prices from Yahoo Finance easily
+\item \textbf{zoo}: for dealing with time series data (ex. rolling averages)
+\item \textbf{np}: for fitting kernel regressions
+\item \textbf{mgcv}: for fitting generalized additive models
+\end{itemize}
+
+```{r load_tidyverse, warning = FALSE}
+library(tidyverse)
+library(tidyquant)
+library(zoo)
+library(np)
+library(mgcv)
+```
+
+To see any documentation about the built-in functions used, you can use the `help()` command in the Console in RStudio.
+
+\newpage
+
+The following code and graphs are about the relationship between the realized volatility of the S&P500 and the VIX index. The realized volatility, also known as the historical volatility, measures how much a stock changed in the past, while the VIX attempts to measure how much a stock will change in the future.
+
+```{r prep_data}
+# get prices of S&P500 (SPY) from 1/1/2020 to 1/1/2024
+spy <- tq_get("SPY", 
+              get = "stock.prices",
+              from = "2020-01-01",
+              to = "2024-01-01")
+# get the volatility index VIX for the same time period
+vix <- tq_get("^VIX",
+              get = "stock.prices",
+              from = "2020-01-01",
+              to = "2024-01-01")
+
+# only look at the close values of VIX and turn it into a decimal value (i.e. 10% -> 0.1)
+vix_close <- vix |>
+  select(date, vixclose = close) |>
+  mutate(vix_index = vixclose / 100)
+
+# compute the daily log-returns of SPY
+spy_logreturns <- spy |>
+  arrange(date) |>
+  # the log-returns of day t = log(adjusted price of day t / adjusted price of day t-1)
+  mutate(log_return = log(adjusted / lag(adjusted)))
+
+# remove the first row of the dataframe containing the log-returns since we don't 
+# have log-returns computed for the first recorded day
+spy_logreturns <- spy_logreturns[-1,]
+
+# compute the 30-day realized (annualized) volatility of SPY
+spy_logreturns <- spy_logreturns |>
+  # computes a rolling avg. with a 30-day window, but instead of averaging, it's 
+  # computing the standard deviation
+  #  - align = "right" means we use the first 30 days to compute the first value, aligning
+  #    our data on the right
+  # - fill = NA means to fill the first 30 rows that we can't compute rolling_val for with NA
+  mutate(rolling_vol = rollapply(log_return, width = 30, FUN = sd, fill = NA, align = "right")) |>
+  # compute the annualized volatility, which just means multiplying the daily 
+  # volatility from the previous line by the square root of the number of trading days
+  # in a year, which is always 252
+  mutate(rolling_vol_annual = rolling_vol * sqrt(252))
+
+# join the spy_logreturns and vix_close by taking all of the rows in vix_close 
+# that have dates that appear in spy_logreturns and adding that information together
+# with everything from spy_logreturns
+spy.vix <- left_join(spy_logreturns, vix_close, by = "date")
+```
+
+```{r plot}
+# plotting the realized volatility of SPY and the VIX index
+spy.vix |>
+  ggplot(aes(x = as.Date(date))) +
+  geom_line(aes(y = rolling_vol_annual), color = "blue", alpha = 0.7) +
+  geom_line(aes(y = vix_index), color = "red", alpha = 0.7) +
+  theme_bw() +
+  labs(title = "Realized Volatility of SPY and VIX Over Time",
+       subtitle = "The blue marks the realized volatility, while red marks the VIX index",
+       x = "Date", y = "Volatility Percentage")
+```
+
+```{r lm}
+# fit a linear regression model of VIX on realized volatility
+lm_mdl <- lm(vix_index ~ rolling_vol_annual, data = spy.vix)
+
+# plot the linear regression line
+spy.vix |>
+  ggplot(aes(x = rolling_vol_annual, y = vix_index)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(intercept = coefficients(lm_mdl)["(Intercept)"],
+              slope = coefficients(lm_mdl)["rolling_vol_annual"],
+              color = "red") +
+  theme_bw() +
+  labs(title = "VIX vs Realized Volatility",
+       subtitle = "The red line denotes the line-of-best-fit from fitting a linear model",
+       x = "Realized Volatility (annualized)",
+       y = "VIX")
+```
+
+```{r lm_predict}
+# now get the data for 1/2/2024 - 1/1/2025 and repeat the same data manipulations 
+# (i.e. the year following the data we used to fit the model)
+newspy <- tq_get("SPY", 
+                 get = "stock.prices",
+                 from = "2024-01-02",
+                 to = "2025-01-01")
+newvix <- tq_get("^VIX",
+                 get = "stock.prices",
+                 from = "2024-01-02",
+                 to = "2025-01-01")
+
+newvix_close <- newvix |>
+  select(date, vixclose = close) |>
+  mutate(vix_index = vixclose / 100)
+
+newspy_logreturns <- newspy |>
+  arrange(date) |>
+  # the log-returns of day t = log(adjusted price of day t / adjusted price of day t-1)
+  mutate(log_return = log(adjusted / lag(adjusted)))
+
+# remove the first row of the dataframe containing the log-returns since we don't 
+# have log-returns computed for the first recorded day
+newspy_logreturns <- newspy_logreturns[-1,]
+
+# compute the 30-day realized (annualized) volatility of SPY
+newspy_logreturns <- newspy_logreturns |>
+  # computes a rolling avg. with a 30-day window, but instead of averaging, it's 
+  # computing the standard deviation
+  #  - align = "right" means we use the first 30 days to compute the first value, aligning
+  #    our data on the right
+  # - fill = NA means to fill the first 30 rows that we can't compute rolling_val for with NA
+  mutate(rolling_vol = rollapply(log_return, width = 30, FUN = sd, fill = NA, align = "right")) |>
+  # compute the annualized volatility, which just means multiplying the daily 
+  # volatility from the previous line by the square root of the number of trading days
+  # in a year, which is always 252
+  mutate(rolling_vol_annual = rolling_vol * sqrt(252))
+
+# join the spy_logreturns and vix_close by taking all of the rows in vix_close 
+# that have dates that appear in spy_logreturns and adding that information together
+# with everything from spy_logreturns
+new_spy.vix <- left_join(newspy_logreturns, newvix_close, by = "date")
+
+# use the new_spy.vix data to compute the predicted VIX values over this new time interval
+lm_mdl.predictions <- predict(lm_mdl, newdata = new_spy.vix)
+# add this as a new column to new_spy.vix
+new_spy.vix <- data.frame(new_spy.vix,
+                          lm.pred_vix = lm_mdl.predictions)
+
+# plot the actual VIX values of this time period against the predicted
+new_spy.vix |>
+  ggplot(aes(x = vix_index, y = lm.pred_vix)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(intercept = 0, slope = 1) +
+  geom_smooth(method = "lm") +
+  theme_bw() +
+  labs(title = "2024 VIX vs Predicted VIX Using Linear Regression",
+       x = "Observed VIX", y = "Predicted VIX")
+```
+
+If the predicted value matches the actual observed, then the data would appear centered around the black line in the plot. However, when we fit a linear regression of the predicted values on the observed (i.e. find the line-of-best-fit) and plot it as the blue line, we do see a difference between the two plotted lines. Something to keep in mind is that we do see some outliers on the right where we see a drastically different VIX value from the rest of the data which heavily influences the fitting of the blue line. Regardless, we can see from observing the data points that they don't appear to be centered around the black line. It appears that the linear model tended to over-estimate the VIX index since most points lied above the black line.
+
+```{r kernel}
+# turn off annoying np messages
+options(np.messages = FALSE)
+# now fit a kernel regression instead of a linear regression
+kernel_mdl <- npreg(vix_index ~ rolling_vol_annual, data = spy.vix)
+# and now use the kernel regression model for predictions
+kernel_mdl.predictions <- predict(kernel_mdl, newdata = new_spy.vix)
+
+# add these new predictions to the previous plot
+new_spy.vix <- data.frame(new_spy.vix,
+                          kernel.pred_vix = c(rep(NA, 29), kernel_mdl.predictions))
+new_spy.vix |>
+  ggplot(aes(x = vix_index)) +
+  geom_point(aes(y = lm.pred_vix), alpha = 0.3, color = "blue") +
+  geom_point(aes(y = kernel.pred_vix), alpha = 0.3, color = "red") +
+  geom_abline(intercept = 0, slope = 1) +
+  theme_bw() +
+  labs(title = "2024 VIX vs Predicted VIX",
+       subtitle = "Blue = Linear Regression, Red = Kernel Regression",
+       x = "Observed VIX", y = "Predicted VIX")
+```
+
+```{r gam}
+# now fit a generalized additive model (GAM)
+# - s(...) means to smooth over this variable
+gam_mdl <- gam(vix_index ~ s(rolling_vol_annual), data = spy.vix)
+# use the gam for predictions
+gam_mdl.predictions <- predict(gam_mdl, newdata = new_spy.vix)
+# add these to the plot as well
+new_spy.vix <- data.frame(new_spy.vix,
+                          gam.pred_vix = gam_mdl.predictions)
+new_spy.vix |>
+  ggplot(aes(x = vix_index)) +
+  geom_point(aes(y = lm.pred_vix), alpha = 0.3, color = "blue") +
+  geom_point(aes(y = kernel.pred_vix), alpha = 0.3, color = "red") +
+  geom_point(aes(y = gam.pred_vix), alpha = 0.3, color = "green") +
+  geom_abline(intercept = 0, slope = 1) +
+  theme_bw() +
+  labs(title = "2024 VIX vs Predicted VIX",
+       subtitle = "Blue = Linear Regression, Red = Kernel Regression, Green = GAM",
+       x = "Observed VIX", y = "Predicted VIX")
+```
