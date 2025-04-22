@@ -3,7 +3,7 @@ title: "Fitting Models of VIX on Realized Volatility"
 output:
   pdf_document: default
 urlcolor: blue
-date: "Last Updated: 2025-04-21"
+date: "Last Updated: 2025-04-22"
 ---
 
 ```{r setup, include=FALSE}
