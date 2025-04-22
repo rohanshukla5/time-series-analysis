@@ -1,5 +1,6 @@
 ---
 title: "Fitting Models of VIX on Realized Volatility"
+subtitle: "Using Cross Validation"
 output:
   pdf_document: default
 urlcolor: blue
@@ -149,7 +150,7 @@ vix_volatility |>
 #        - kfolds = number of folds with default = 10
 # Output: a vector with
 #         - the training data used to fit the model
-#         - the corresponding RMSE
+#         - the cross-validated RMSE (avg. rmse computed across all folds)
 cv.lm <- function(data, kfolds = 10){
   # remove NA values
   data <- na.omit(data)
@@ -186,8 +187,8 @@ cv.lm <- function(data, kfolds = 10){
   }
   # find the index (i.e. the fold) that had the smallest RMSE
   index <- which.min(rmses)
-  # return the corresponding training set and RMSE
-  return(c(train = training.sets[index], rmse = rmses[index]))
+  # return the corresponding training set and the cross-validated RMSE
+  return(c(train = training.sets[index], rmse = mean(rmses)))
 }
 
 # Define function that uses k-fold cross validation to fit a kernel regression model
@@ -196,7 +197,7 @@ cv.lm <- function(data, kfolds = 10){
 #        - kfolds = number of folds with default = 10
 # Output: a vector with
 #         - the training data used to fit the model
-#         - the corresponding RMSE
+#         - the cross-validated RMSE (avg. rmse computed across all folds)
 ## NOTE: has longer runtime compared to the others
 cv.kernel <- function(data, kfolds = 10){
   # remove NA values
@@ -236,8 +237,8 @@ cv.kernel <- function(data, kfolds = 10){
   }
   # find the index (i.e. the fold) that had the smallest RMSE
   index <- which.min(rmses)
-  # return the corresponding training set and RMSE
-  return(c(train = training.sets[index], rmse = rmses[index]))
+  # return the corresponding training set and the cross-validated RMSE
+  return(c(train = training.sets[index], rmse = mean(rmses)))
 }
 
 # Define function that uses k-fold cross validation to fit a GAM
@@ -246,7 +247,7 @@ cv.kernel <- function(data, kfolds = 10){
 #        - kfolds = number of folds with default = 10
 # Output: a vector with
 #         - the training data used to fit the model
-#         - the corresponding RMSE
+#         - the cross-validated RMSE (avg. rmse computed across all folds)
 cv.gam <- function(data, kfolds = 10){
   # remove NA values
   data <- na.omit(data)
@@ -283,8 +284,8 @@ cv.gam <- function(data, kfolds = 10){
   }
   # find the index (i.e. the fold) that had the smallest RMSE
   index <- which.min(rmses)
-  # return the corresponding training set and RMSE
-  return(c(train = training.sets[index], rmse = rmses[index]))
+  # return the corresponding training set and the cross-validated RMSE
+  return(c(train = training.sets[index], rmse = mean(rmses)))
 }
 ```
 
@@ -302,3 +303,15 @@ gam.mdl <- gam(vix ~ rolling_vol_annual,
                data = vix_volatility |> filter(date %in% output_cv.gam$train))
 ```
 
+The following is a table of the cross-validated root mean squared errors (RMSE) from each of the models fitted:
+
+\begin{center}
+\begin{tabular}{c | c}
+Model & Cross Validated RMSE\\
+\hline
+\hline
+Linear Model & `r signif(output_cv.lm$rmse, 4)`\\
+Kernel & `r signif(output_cv.kernel$rmse, 4)`\\
+GAM & `r signif(output_cv.gam$rmse, 4)`
+\end{tabular}
+\end{center}
