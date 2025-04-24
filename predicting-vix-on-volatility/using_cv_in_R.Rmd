@@ -4,7 +4,7 @@ subtitle: "Using Cross Validation"
 output:
   pdf_document: default
 urlcolor: blue
-date: "Last Updated: 2025-04-22"
+date: "Last Updated: 2025-04-24"
 ---
 
 ```{r setup, include=FALSE}
@@ -40,26 +40,24 @@ To see any documentation about the built-in functions used, you can use the `hel
 
 # About This File \& Code
 
-Here, we study the relationship between the VIX index and the realized volatility of the S&P500 (SPY) stock prices by fitting regression models where the realized volatility is the predictor variable and the VIX is the response. We want to examine whether we can predict the VIX by solely regressing on the realized volatility of the S&P500 and if so, which model is able to make the best predictions. We will fit regression models that don't take the time dependency into consideration to see whether time plays a role in the relationship between the VIX and the realized volatility. Some of these models include ordinary linear regression models, generalized additive models (GAM), and kernel regression. Note that when fitting these models, we will be using cross validation to minimize the root mean squared error (RMSE) of the model.
+Here, we study the relationship between the VIX1Y index and the realized volatility of the S&P500 (SPY) stock prices by fitting regression models where the realized volatility is the predictor variable and the VIX1Y is the response. We want to examine whether we can predict the VIX by solely regressing on the realized volatility of the S&P500 and if so, which model is able to make the best predictions. We will fit regression models that don't take the time dependency into consideration to see whether time plays a role in the relationship between the VIX and the realized volatility. Some of these models include ordinary linear regression models, generalized additive models (GAM), and kernel regression. Note that when fitting these models, we will be using cross validation to minimize the root mean squared error (RMSE) of the model.
 
 ```{r data}
-# First, get the S&P500 prices and VIX from 1/2/2008 - 1/1/2023
-spy.vix <- tq_get(c("SPY", "^VIX"),
-                  get = "stock.prices",
-                  from = "2008-01-02",
-                  to = "2023-01-01")
+# First, get the S&P500 prices from 1/2/2008 - 1/1/2024
+spy <- tq_get("SPY",
+              get = "stock.prices",
+              from = "2008-01-02",
+              to = "2024-01-01")
 
-# look at the close values of VIX and turn it into a decimal value (i.e. 10% -> 0.1)
-vix.index <- spy.vix |>
-  filter(symbol == "^VIX") |>
-  select(date, close) |>
-  summarise(date = date,
-            vix = close / 100)
+# get the VIX1Y from downloaded csv file on github
+vix <- read.csv("VIX1y.csv", header = FALSE)
+# redefine this dataframe with proper variable names
+vix.index <- data.frame(date = as.Date(as.character(vix$V1), format = "%m/%d/%Y"),
+                        vix = vix$V4 / 100)
 
 # compute the daily log-returns of SPY
-spy.logreturns <- spy.vix |>
+spy.logreturns <- spy |>
   arrange(date) |>
-  filter(symbol == "SPY") |>
   summarise(date = date,
             # the log-returns of day t = log(adjusted price of day t / adjusted price of day t-1)
             log_return = log(adjusted / lag(adjusted)))
@@ -79,10 +77,10 @@ spy.volatility <- spy.logreturns |>
   # in a year, which is always 252
   mutate(rolling_vol_annual = rolling_vol * sqrt(252))
 
-# join the spy.volatility and vix.index by taking all of the rows in vix.index 
-# that have dates that appear in spy.volatility and adding that information together
-# with everything from spy.volatility
-vix_volatility <- left_join(spy.volatility, vix.index, by = "date")
+# join the spy.volatility and vix.index by taking all of the rows in spy.volatility 
+# that have dates that appear in vix.index and adding that information together
+# with everything from vix.index
+vix_volatility <- right_join(spy.volatility, vix.index, by = "date")
 # this is the dataframe that will be used for fitting models
 ```
 
@@ -118,19 +116,21 @@ vix_volatility |>
 ```{r plot.vix_and_volatility}
 # Plot VIX and volatility against time
 vix_volatility |>
+  na.omit() |>
   ggplot(aes(x = date)) +
   geom_line(aes(y = rolling_vol_annual, color = "Realized Volatility"), alpha = 0.7) +
   geom_line(aes(y = vix, color = "VIX"), alpha = 0.7) +
   scale_color_manual(values = c("Realized Volatility" = "blue", "VIX" = "red")) +
-  labs(title = "Realized Volatility and VIX Over Time",
-       x = "Year", y = "Volatility Percentage", color = "") +
+  labs(title = "Realized Volatility and VIX Over 2023",
+       x = "Month", y = "Volatility Percentage", color = "") +
   theme_bw()
 
 # Plot VIX and volatility against each other
 vix_volatility |>
+  na.omit() |>
   ggplot(aes(x = rolling_vol_annual, y = vix)) +
   geom_point(alpha = 0.5) +
-  labs(title = "VIX vs Realized Volatility",
+  labs(title = "VIX vs Realized Volatility of 2023",
        x = "Realized Volatility", y = "VIX") +
   theme_bw()
 ```
@@ -140,18 +140,18 @@ vix_volatility |>
 # Fitting the Models
 
 ```{r cv_fns}
-## The code below is pretty repeated, but the key difference is the model being fitted
 ## Note that the training data outputted is just the dates of the training data
 
 
-# Define function that uses k-fold cross validation to fit a linear regression model
-# of vix on volatility
+# Define function that uses k-fold cross validation to fit a model of vix on volatility
 # Input: - data = a dataframe with columns rolling_vol_annual and vix
 #        - kfolds = number of folds with default = 10
+#        - method = type of model being fitted 
+#                   "lm" for linear (default), "kernel" for kernel, "gam" = for gam
 # Output: a vector with
 #         - the training data used to fit the model
 #         - the cross-validated RMSE (avg. rmse computed across all folds)
-cv.lm <- function(data, kfolds = 10){
+cv <- function(data, kfolds = 10, method = "lm"){
   # remove NA values
   data <- na.omit(data)
   # compute number of rows in the data
@@ -174,104 +174,12 @@ cv.lm <- function(data, kfolds = 10){
     test <- data[test.rows,]
     
     # fit the model for this fold with the train set
-    current.mdl <- lm(vix ~ rolling_vol_annual, data = train)
-    # compute the predicted values of this model on the test set
-    test.predictions <- predict(current.mdl, newdata = test)
-    # compute the actual response values in the test set
-    test.responses <- test$vix
-    # compute the errors = observed - predicted
-    test.errors <- test.responses - test.predictions
-    # compute and store the rmse & training set
-    rmses[fold] <- sqrt(mean(test.errors^2))
-    training.sets[fold] <- train
-  }
-  # find the index (i.e. the fold) that had the smallest RMSE
-  index <- which.min(rmses)
-  # return the corresponding training set and the cross-validated RMSE
-  return(c(train = training.sets[index], rmse = mean(rmses)))
-}
-
-# Define function that uses k-fold cross validation to fit a kernel regression model
-# of vix on volatility
-# Input: - data = a dataframe with columns rolling_vol_annual and vix
-#        - kfolds = number of folds with default = 10
-# Output: a vector with
-#         - the training data used to fit the model
-#         - the cross-validated RMSE (avg. rmse computed across all folds)
-## NOTE: has longer runtime compared to the others
-cv.kernel <- function(data, kfolds = 10){
-  # remove NA values
-  data <- na.omit(data)
-  # compute number of rows in the data
-  n <- nrow(data)
-  # construct the random assignment of which rows belong to which folds
-  # - rep(1:kfolds, length.out = n) means make a vector of length n that loops through
-  #   the values 1 through kfolds
-  # - sample(...) means generate a random permutation of the input vector
-  foldlabels <- sample(rep(1:kfolds, length.out = n))
-  # initialize vectors to store the training sets and RMSE
-  rmses <- rep(NA, length.out = kfolds)
-  training.sets <- rep(NA, length.out = kfolds)
-  # turn off annoying np messages
-  options(np.messages = FALSE)
-  
-  # for each fold
-  for (fold in 1:kfolds){
-    # collect the row indexes that belong to the current fold and use these for testing
-    test.rows <- which(foldlabels == fold)
-    # separate our training and testing sets
-    train <- data[-test.rows,]
-    test <- data[test.rows,]
-    
-    # fit the model for this fold with the train set
-    current.mdl <- npreg(vix ~ rolling_vol_annual, data = train)
-    # compute the predicted values of this model on the test set
-    test.predictions <- predict(current.mdl, newdata = test)
-    # compute the actual response values in the test set
-    test.responses <- test$vix
-    # compute the errors = observed - predicted
-    test.errors <- test.responses - test.predictions
-    # compute and store the rmse & training set
-    rmses[fold] <- sqrt(mean(test.errors^2))
-    training.sets[fold] <- train
-  }
-  # find the index (i.e. the fold) that had the smallest RMSE
-  index <- which.min(rmses)
-  # return the corresponding training set and the cross-validated RMSE
-  return(c(train = training.sets[index], rmse = mean(rmses)))
-}
-
-# Define function that uses k-fold cross validation to fit a GAM
-# of vix on volatility
-# Input: - data = a dataframe with columns rolling_vol_annual and vix
-#        - kfolds = number of folds with default = 10
-# Output: a vector with
-#         - the training data used to fit the model
-#         - the cross-validated RMSE (avg. rmse computed across all folds)
-cv.gam <- function(data, kfolds = 10){
-  # remove NA values
-  data <- na.omit(data)
-  # compute number of rows in the data
-  n <- nrow(data)
-  # construct the random assignment of which rows belong to which folds
-  # - rep(1:kfolds, length.out = n) means make a vector of length n that loops through
-  #   the values 1 through kfolds
-  # - sample(...) means generate a random permutation of the input vector
-  foldlabels <- sample(rep(1:kfolds, length.out = n))
-  # initialize vectors to store the training sets and RMSE
-  rmses <- rep(NA, length.out = kfolds)
-  training.sets <- rep(NA, length.out = kfolds)
-  
-  # for each fold
-  for (fold in 1:kfolds){
-    # collect the row indexes that belong to the current fold and use these for testing
-    test.rows <- which(foldlabels == fold)
-    # separate our training and testing sets
-    train <- data[-test.rows,]
-    test <- data[test.rows,]
-    
-    # fit the model for this fold with the train set
-    current.mdl <- gam(vix ~ rolling_vol_annual, data = train)
+    ifelse(method == "kernel", # if using kernel model
+           current.mdl <- npreg(vix ~ rolling_vol_annual, data = train), # fit it using lm()
+           ifelse(method == "gam", # otherwise, if using gam
+                  current.mdl <- gam(vix ~ s(rolling_vol_annual), data = train), # fit using gam()
+                  # otherwise, fit using lm()
+                  current.mdl <- lm(vix ~ rolling_vol_annual, data = train))) 
     # compute the predicted values of this model on the test set
     test.predictions <- predict(current.mdl, newdata = test)
     # compute the actual response values in the test set
@@ -290,16 +198,17 @@ cv.gam <- function(data, kfolds = 10){
 ```
 
 ```{r fit_mdls}
+options(np.messages = FALSE)
 # use the cv functions defined above
-output_cv.lm <- cv.lm(vix_volatility)
-output_cv.kernel <- cv.kernel(vix_volatility)
-output_cv.gam <- cv.gam(vix_volatility)
+output_cv.lm <- cv(vix_volatility)
+output_cv.kernel <- cv(vix_volatility, method = "kernel")
+output_cv.gam <- cv(vix_volatility, method = "gam")
 # use these outputs to fit our models
 lm.mdl <- lm(vix ~ rolling_vol_annual, 
              data = vix_volatility |> filter(date %in% output_cv.lm$train))
 kernel.mdl <- npreg(vix ~ rolling_vol_annual,
                     data = vix_volatility |> filter(date %in% output_cv.kernel$train))
-gam.mdl <- gam(vix ~ rolling_vol_annual,
+gam.mdl <- gam(vix ~ s(rolling_vol_annual),
                data = vix_volatility |> filter(date %in% output_cv.gam$train))
 ```
 
@@ -315,3 +224,38 @@ Kernel & `r signif(output_cv.kernel$rmse, 4)`\\
 GAM & `r signif(output_cv.gam$rmse, 4)`
 \end{tabular}
 \end{center}
+
+\textbf{Summary Outputs} for linear regression
+```{r lm_summmary}
+summary(lm.mdl)
+```
+
+\textbf{Summary Outputs} for kernel regression
+```{r kernel_summary}
+summary(kernel.mdl)
+```
+
+\textbf{Summary Outputs} for GAM
+```{r gam_summary}
+summary(gam.mdl)
+
+plot(gam.mdl, residuals = TRUE, pages = 0, 
+     main = "Estimated Partial Function for GAM", 
+     xlab = "Realized Volatility", ylab = "VIX")
+```
+
+```{r fitted_values}
+# Remake the plot of vix vs volatility, but now adding the fitted values of the models
+vix_volatility |>
+  na.omit() |>
+  ggplot(aes(x = rolling_vol_annual)) +
+  geom_point(aes(y = vix), alpha = 0.5) +
+  geom_point(aes(y = predict(lm.mdl, newdata = na.omit(vix_volatility)), color = "Linear"), alpha = 0.5) +
+  geom_point(aes(y = predict(kernel.mdl, newdata = na.omit(vix_volatility)), color = "Kernel"), 
+             alpha = 0.5) +
+  geom_point(aes(y = predict(gam.mdl, newdata = na.omit(vix_volatility)), color = "GAM"), alpha = 0.5) +
+  scale_color_manual(values = c("Linear" = "blue", "Kernel" = "red", "GAM" = "green")) +
+  labs(title = "VIX vs Realized Volatility of 2023",
+       x = "Realized Volatility", y = "VIX", color = "Model") +
+  theme_bw()
+```
