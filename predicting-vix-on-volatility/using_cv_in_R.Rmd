@@ -4,7 +4,7 @@ subtitle: "Using Cross Validation"
 output:
   pdf_document: default
 urlcolor: blue
-date: "Last Updated: 2025-04-24"
+date: "Last Updated: 2025-04-25"
 ---
 
 ```{r setup, include=FALSE}
@@ -43,11 +43,11 @@ To see any documentation about the built-in functions used, you can use the `hel
 Here, we study the relationship between the VIX1Y index and the realized volatility of the S&P500 (SPY) stock prices by fitting regression models where the realized volatility is the predictor variable and the VIX1Y is the response. We want to examine whether we can predict the VIX by solely regressing on the realized volatility of the S&P500 and if so, which model is able to make the best predictions. We will fit regression models that don't take the time dependency into consideration to see whether time plays a role in the relationship between the VIX and the realized volatility. Some of these models include ordinary linear regression models, generalized additive models (GAM), and kernel regression. Note that when fitting these models, we will be using cross validation to minimize the root mean squared error (RMSE) of the model.
 
 ```{r data}
-# First, get the S&P500 prices from 1/2/2008 - 1/1/2024
+# First, get the S&P500 prices from 1/2/2008 - 4/17/2025
 spy <- tq_get("SPY",
               get = "stock.prices",
               from = "2008-01-02",
-              to = "2024-01-01")
+              to = "2025-04-17")
 
 # get the VIX1Y from downloaded csv file on github
 vix <- read.csv("VIX1y.csv", header = FALSE)
@@ -97,7 +97,7 @@ vix_volatility |>
         s.window = 252) + # with a seasonal difference of 252 (# of trading days in a year)
   geom_line() +
   labs(title = "Seasonal Decomposition of VIX",
-       x = "Year", y = "VIX") +
+       x = "Time", y = "VIX") +
   theme_bw()
 
 # Plot the seasonal decomposition of the volatility
@@ -109,7 +109,7 @@ vix_volatility |>
         s.window = 252) + # with a seasonal difference of 252 (# of trading days in a year)
   geom_line() +
   labs(title = "Seasonal Decomposition of Realized Volatility",
-       x = "Year", y = "Volatility") +
+       x = "Time", y = "Volatility") +
   theme_bw()
 ```
 
@@ -121,8 +121,8 @@ vix_volatility |>
   geom_line(aes(y = rolling_vol_annual, color = "Realized Volatility"), alpha = 0.7) +
   geom_line(aes(y = vix, color = "VIX"), alpha = 0.7) +
   scale_color_manual(values = c("Realized Volatility" = "blue", "VIX" = "red")) +
-  labs(title = "Realized Volatility and VIX Over 2023",
-       x = "Month", y = "Volatility Percentage", color = "") +
+  labs(title = "Realized Volatility and VIX",
+       x = "Time", y = "Volatility Percentage", color = "") +
   theme_bw()
 
 # Plot VIX and volatility against each other
@@ -130,7 +130,7 @@ vix_volatility |>
   na.omit() |>
   ggplot(aes(x = rolling_vol_annual, y = vix)) +
   geom_point(alpha = 0.5) +
-  labs(title = "VIX vs Realized Volatility of 2023",
+  labs(title = "VIX vs Realized Volatility",
        x = "Realized Volatility", y = "VIX") +
   theme_bw()
 ```
@@ -245,17 +245,48 @@ plot(gam.mdl, residuals = TRUE, pages = 0,
 ```
 
 ```{r fitted_values}
+# omit NA values for plotting purposes
+plot.vix_volatility <- na.omit(vix_volatility)
+
 # Remake the plot of vix vs volatility, but now adding the fitted values of the models
-vix_volatility |>
-  na.omit() |>
+plot.vix_volatility |>
   ggplot(aes(x = rolling_vol_annual)) +
   geom_point(aes(y = vix), alpha = 0.5) +
-  geom_point(aes(y = predict(lm.mdl, newdata = na.omit(vix_volatility)), color = "Linear"), alpha = 0.5) +
-  geom_point(aes(y = predict(kernel.mdl, newdata = na.omit(vix_volatility)), color = "Kernel"), 
+  geom_point(aes(y = predict(lm.mdl, newdata = plot.vix_volatility), color = "Linear"), 
              alpha = 0.5) +
-  geom_point(aes(y = predict(gam.mdl, newdata = na.omit(vix_volatility)), color = "GAM"), alpha = 0.5) +
+  geom_point(aes(y = predict(kernel.mdl, newdata = plot.vix_volatility), color = "Kernel"), 
+             alpha = 0.5) +
+  geom_point(aes(y = predict(gam.mdl, newdata = plot.vix_volatility), color = "GAM"), 
+             alpha = 0.5) +
   scale_color_manual(values = c("Linear" = "blue", "Kernel" = "red", "GAM" = "green")) +
-  labs(title = "VIX vs Realized Volatility of 2023",
+  labs(title = "VIX vs Realized Volatility",
+       subtitle = "with the fitted values from each model",
+       x = "Realized Volatility", y = "VIX", color = "Model") +
+  theme_bw()
+```
+
+
+```{r curves}
+# create a discrete grid of the realized volatility values for plotting curve
+volatility.grid <- data.frame(rolling_vol_annual = seq(from = min(plot.vix_volatility$rolling_vol_annual), 
+                       to = max(plot.vix_volatility$rolling_vol_annual),
+                       length.out = nrow(plot.vix_volatility)))
+# plot
+plot.vix_volatility |>
+  ggplot() +
+  geom_point(aes(x = rolling_vol_annual, y = vix), alpha = 0.5) +
+  geom_line(aes(x = volatility.grid$rolling_vol_annual,
+                y = predict(lm.mdl, newdata = volatility.grid),
+                color = "Linear"), size = 1) +
+  geom_line(aes(x = volatility.grid$rolling_vol_annual,
+                y = predict(kernel.mdl, newdata = volatility.grid),
+                color = "Kernel"), size = 1) +
+  geom_line(aes(x = volatility.grid$rolling_vol_annual,
+                y = predict(gam.mdl, newdata = volatility.grid),
+                color = "GAM"), size = 1) +
+  scale_color_manual(values = c("Linear" = "blue", "Kernel" = "red", "GAM" = "green")) +
+  labs(title = "VIX vs Realized Volatility",
+       subtitle = "with the fitted curves from each model",
        x = "Realized Volatility", y = "VIX", color = "Model") +
   theme_bw()
 ```
