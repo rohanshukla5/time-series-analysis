@@ -4,7 +4,7 @@ subtitle: "Using Cross Validation"
 output:
   pdf_document: default
 urlcolor: blue
-date: "Last Updated: 2025-04-25"
+date: "Last Updated: 2025-04-28"
 ---
 
 ```{r setup, include=FALSE}
@@ -289,4 +289,27 @@ plot.vix_volatility |>
        subtitle = "with the fitted curves from each model",
        x = "Realized Volatility", y = "VIX", color = "Model") +
   theme_bw()
+```
+
+```{r rmse_plot}
+# collect the cross-validated rmses into one dataframe
+rmse <- data.frame(model = c("Linear", "GAM", "Kernel"),
+                   rmse = c(output_cv.lm$rmse,
+                            output_cv.gam$rmse,
+                            output_cv.kernel$rmse))
+
+# make a bar chart to display the RMSE
+rmse |>
+  ggplot(aes(x = reorder(model, rmse, decreasing = TRUE), y = rmse)) +
+  geom_col(aes(fill = model), color = "black") +
+  scale_fill_manual(values = c("Linear" = "blue", "Kernel" = "red", "GAM" = "green")) +
+  annotate(geom = "text", x = 1, y = output_cv.lm$rmse + 0.0005, 
+           label = as.character(signif(output_cv.lm$rmse, 4))) +
+  annotate(geom = "text", x = 2, y = output_cv.gam$rmse + 0.0005, 
+           label = as.character(signif(output_cv.gam$rmse, 4))) +
+  annotate(geom = "text", x = 3, y = output_cv.kernel$rmse + 0.0005, 
+           label = as.character(signif(output_cv.kernel$rmse, 4))) +
+  theme_bw() +
+  labs(title = "Cross-Validated RMSEs for Each Model",
+       x = "", y = "RMSE", fill = "Model")
 ```
